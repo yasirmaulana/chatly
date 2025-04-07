@@ -2,8 +2,6 @@
 
 Chatly is a smart AI chatbot built with [Laravel](https://laravel.com/), [Livewire](https://livewire.laravel.com/), and powered by [Groq](https://groq.com/) for blazing fast generative AI responses. It connects directly to your PostgreSQL transaction tables and lets users ask questions in natural language — and get answers directly from the data.
 
----
-
 ## ✨ Features
 
 - 🔍 Ask natural-language questions based on your PostgreSQL data
@@ -11,8 +9,6 @@ Chatly is a smart AI chatbot built with [Laravel](https://laravel.com/), [Livewi
 - 💬 Real-time chat interface with Livewire
 - 📊 Smart insight delivery (total, summary, trends, etc)
 - 📚 Chat history & query logging
-
----
 
 ## 📦 Tech Stack
 
@@ -22,13 +18,9 @@ Chatly is a smart AI chatbot built with [Laravel](https://laravel.com/), [Livewi
 - Groq LLM API
 - TailwindCSS
 
----
-
 ## 🖥️ UI Preview
 
 Coming soon...
-
----
 
 ## 🚀 Getting Started
 
@@ -41,7 +33,6 @@ npm install && npm run dev
 php artisan migrate
 php artisan serve
 ```
----
 
 ## ⚙️ Configuration
 
