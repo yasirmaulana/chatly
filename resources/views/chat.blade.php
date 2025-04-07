@@ -44,7 +44,7 @@
       <!-- Sidebar -->
       <nav class="col-md-2 d-none d-md-block bg-white shadow-sm min-vh-100">
         <div class="p-3">
-          <h4 class="text-primary">Chatly</h4>
+          <img src="{{ asset('assets/img/chatly.webp') }}" alt="Chatly Logo" class="rounded-circle shadow" style="height: 50px; width: 50px; object-fit: cover;">
           <ul class="nav flex-column">
             <li class="nav-item"><a class="nav-link active" href="#">Chat History</a></li>
             <li class="nav-item"><a class="nav-link" href="#">Query Logs</a></li>

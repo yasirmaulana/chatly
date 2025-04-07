@@ -39,3 +39,24 @@ cp .env.example .env
 composer install
 php artisan migrate
 php artisan serve
+
+---
+
+## ⚙️ Configuration
+
+- Set your Groq API key in .env:
+
+```bash
+GROQ_API_KEY=your-api-key-here
+GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
+GROQ_API_MODEL=llama3-70b-8192 #llama-3.3-70b-versatile
+
+- Configure your database as needed.
+
+## 🤝 Contribution
+
+Feel free to submit pull requests, open issues or suggest features!
+
+## 📄 License
+
+MIT License
