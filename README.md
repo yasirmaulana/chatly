@@ -20,7 +20,7 @@ Chatly is a smart AI chatbot built with [Laravel](https://laravel.com/), [Livewi
 - Livewire 3
 - PostgreSQL
 - Groq LLM API
-- Bootstrap 5
+- TailwindCSS
 
 ---
 
@@ -37,9 +37,10 @@ git clone https://github.com/yourusername/chatly.git
 cd chatly
 cp .env.example .env
 composer install
+npm install && npm run dev
 php artisan migrate
 php artisan serve
-
+```
 ---
 
 ## ⚙️ Configuration
@@ -49,7 +50,8 @@ php artisan serve
 ```bash
 GROQ_API_KEY=your-api-key-here
 GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
-GROQ_API_MODEL=llama3-70b-8192 #llama-3.3-70b-versatile
+GROQ_MODEL=llama3-70b-8192 #llama-3.3-70b-versatile
+```
 
 - Configure your database as needed.
 
