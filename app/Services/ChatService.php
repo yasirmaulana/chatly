@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
 use App\Models\Transaction;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class ChatService
 {
@@ -24,9 +25,11 @@ class ChatService
     {
         try {
             $filters = $this->parseUserIntent($message);
+            // dd($filters);
             $transactions = $this->queryFilteredTransactions($userId, $filters);
             // dd($transactions);
             $finalPrompt = $this->generatePromptFromFilteredData($message, $transactions);
+            // dd($finalPrompt);
 
             return $this->askGroq($finalPrompt);
         } catch (\Exception $e) {
@@ -37,48 +40,45 @@ class ChatService
 
     public function parseUserIntent(string $message): array
     {
+        $today = Carbon::now()->toDateString();
+        $currentMonth = Carbon::now()->month;
+        $currentYear = Carbon::now()->year;
+
         $prompt = <<<PROMPT
-Kamu adalah asisten AI yang menerjemahkan pesan pengguna menjadi filter query transaksi.
+        Kamu adalah AI yang mengubah pesan pengguna menjadi filter transaksi. Jawaban HARUS berupa JSON VALID dan HANYA JSON, sesuai format ini:
 
-Jawaban HARUS dalam format JSON berikut:
-{
-  "date_filter": "today | yesterday | last_week | this_month | last_month | custom",
-  "item_name": "..."
-  "start_date": "YYYY-MM-DD",
-  "end_date": "YYYY-MM-DD"
-}
+        {
+            "date_filter": "hari_ini | kemarin | minggu_lalu | bulan_ini | bulan_kemarin | custom | riwayat",
+            "item_name": "string atau null",
+            "start_date": "YYYY-MM-DD",
+            "end_date": "YYYY-MM-DD",
+            "amount": "integer atau null",
+            "flag": "> | < | = ",
+        }
 
-- Gunakan "date_filter" hanya dari daftar yang tersedia.
-- Jika pengguna menyebutkan bulan tertentu (misalnya "April 2024"), konversi ke date_filter yang paling cocok (misalnya: "this_month" jika saat ini April 2024, atau "last_month" jika sudah lewat).
-- start_date dan end_date diisi jika date_filter adalah "custom", jika bukan, isi null.
-- Jika pengguna menyebutkan rentang tanggal, isi start_date dan end_date sesuai dengan rentang tersebut dan date_filter = custom.
-- Jika pengguna tidak menyebutkan item, isi "item_name": null.
-- Ubah item_name menjadi huruf kecil (lowercase), kecuali jika item_name diapit tanda petik dua ("). Jika ada tanda petik dua, gunakan isi di dalam tanda petik tersebut sebagai item_name tanpa diubah.
-- Jika pengguna menyebutkan lebih dari satu item, ambil yang pertama.
-- Jangan ubah format, hanya keluarkan JSON valid.
+        Hari ini adalah: {$today}
+        Bulan saat ini adalah: {$currentMonth}
+        Tahun saat ini adalah: {$currentYear}
 
-Contoh input:
-"Saya belanja makanan minggu lalu"
-Output:
-{
-  "date_filter": "last_week",
-  "item_name": "makanan",
-  "start_date": null,
-  "end_date": null
-}
+        Aturan:
+        - Gunakan HANYA nilai date_filter dari daftar.
+        - Tahun saat ini adalah {$currentYear}. Semua tanggal harus berada di tahun ini, kecuali jika pesan pengguna menyebutkan tahun lain.
+        - Jika disebut rentang tanggal atau tanggal tertentu, isi start_date & end_date, dan set date_filter = "custom" atau "riwayat".
+        - Jika tidak disebutkan rentang tanggal atau tanggal tertentu dalam pesan, tentukan start_date dan end_date berdasarkan nilai date_filter:
+        - "hari_ini": isi start_date dan end_date dengan tanggal hari ini ({$today}).
+        - "kemarin": isi start_date dan end_date dengan tanggal kemarin (1 hari sebelum {$today}).
+        - "minggu_lalu": isi start_date dan end_date dengan hari Senin hingga Minggu pada minggu lalu (berdasarkan tanggal hari ini).
+        - "bulan_ini": isi start_date dengan tanggal 1 bulan ini, dan end_date dengan tanggal hari ini (semua di tahun ini).
+        - "bulan_kemarin": isi start_date dengan tanggal 1 bulan lalu, dan end_date dengan tanggal terakhir bulan lalu (di tahun ini).
+        - Jika disebutkan angka tertentu atau nominal text, isi amount dengan angka tersebut, misalnya ditulis:
+        - "400ribu" = 400000
+        - "400.000" = 400000
+        - "lima ribu" = 5000
+        - Jika disebutkan "lebih dari", "kurang dari", "sama dengan", atau "lebih besar dari", isi flag dengan operator yang sesuai.
+        - Jika item tidak disebut, isi "item_name": null.
 
-Contoh input:
-"tanggal berapa saja saya "Beli Pulsa" di bulan april 2024?"
-Output:
-{
-  "date_filter": "this_month",
-  "item_name": "Beli Pulsa",
-  "start_date": null,
-  "end_date": null
-}
-
-Input pengguna:
-PROMPT;
+        Jangan berikan penjelasan apapun. Output HANYA JSON valid.
+        PROMPT;
 
         $response = Http::withToken($this->groqApiKey)
             ->post($this->groqApiUrl, [
@@ -98,41 +98,45 @@ PROMPT;
     public function queryFilteredTransactions(int $userId, array $filters): Collection
     {
         $query = Transaction::where('user_id', $userId);
-
         switch ($filters['date_filter']) {
-            case 'today':
+            case 'hari_ini':
                 $query->whereDate('transaction_date', today());
                 break;
-            case 'yesterday':
+
+            case 'kemarin':
                 $query->whereDate('transaction_date', now()->subDay());
                 break;
-            case 'last_week':
+
+            case 'minggu_lalu':
+            case 'bulan_ini':
+            case 'bulan_kemarin':
+            case 'custom':
+            case 'riwayat':
                 $query->whereBetween('transaction_date', [
-                    now()->subWeek()->startOfWeek(),
-                    now()->subWeek()->endOfWeek()
-                ]);
-                break;
-            case 'this_month':
-                $query->whereMonth('transaction_date', now()->month)
-                    ->whereYear('transaction_date', now()->year);
-                break;
-            case 'last_month':
-                $query->whereMonth('transaction_date', now()->subMonth()->month)
-                    ->whereYear('transaction_date', now()->subMonth()->year);
-                break;
-            case 'custome':
-                $query->whereBetween('transaction_date', [
-                    $filters['start_date'],
-                    $filters['end_date']
+                    Carbon::parse($filters['start_date'])->startOfDay(),
+                    Carbon::parse($filters['end_date'])->endOfDay()
                 ]);
                 break;
         }
+
 
         if (!empty($filters['item_name'])) {
             $query->where('item_name', $filters['item_name']);
         }
 
-        return $query->orderByDesc('transaction_date')->limit(20)->get();
+        if (!empty($filters['amount']) && !empty($filters['flag'])) {
+            $query->where('amount', $filters['flag'], $filters['amount']);
+        }
+
+        // \Log::debug('Querying transactions', [
+        //     'sql' => $query->toSql(),
+        //     'bindings' => $query->getBindings(),
+        // ]);
+
+        return $query
+            ->orderBy('item_name', 'asc')
+            ->orderBy('transaction_date', 'desc')
+            ->get();
     }
 
     public function generatePromptFromFilteredData(string $userMessage, Collection $transactions): string
@@ -140,8 +144,7 @@ PROMPT;
         $summary = "Berikut ini adalah data transaksi yang relevan:\n";
 
         foreach ($transactions as $tx) {
-            $summary .= "- {$tx->transaction_date->format('Y-m-d')}: {$tx->item_name} seharga Rp" .
-                number_format($tx->amount) . "\n";
+            $summary .= "- {$tx->transaction_date->format('Y-m-d')}: {$tx->item_name} seharga Rp " . number_format($tx->amount) . "\n";
         }
 
         return $summary . "\n\nPertanyaan user:\n" . $userMessage;
@@ -149,11 +152,13 @@ PROMPT;
 
     public function askGroq(string $prompt): string
     {
+        // dd($prompt);
+
         $response = Http::withToken($this->groqApiKey)
             ->post($this->groqApiUrl, [
                 'model' => $this->groqModel,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Kamu adalah chatbot keuangan pribadi. Jawablah sesuai data.'],
+                    ['role' => 'system', 'content' => 'Kamu adalah chatbot keuangan pribadi. Jawablah pertanyaan berdasarkan data atau tabel. Jika ada perhitungan, pastikan sesuai dengan nilai angka yang ditampilkan. Jawaban harus dalam bahasa Indonesia.'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
                 'temperature' => 0.3,

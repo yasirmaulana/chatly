@@ -6,7 +6,7 @@
                     {{ $chat['sender'] === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800' }}">
                     
                     {{-- Jika pesan bot mengandung konteks transaksi --}}
-                    @if ($chat['sender'] === 'bot' && Str::contains($chat['message'], 'Berikut adalah') && Str::contains($chat['message'], 'transaksi'))
+                    @if ($chat['sender'] === 'bot' && Str::contains($chat['message'], 'Berikut') && Str::contains($chat['message'], 'transaksi'))
                         <div class="mb-2 font-semibold">📊 Riwayat Transaksi:</div>
                         <table class="text-sm table-auto border border-gray-300">
                             <thead>
@@ -26,7 +26,7 @@
                                             <tr>
                                                 <td class="px-2 py-1 border">{{ $matches[1] }}</td>
                                                 <td class="px-2 py-1 border">{{ $matches[2] }}</td>
-                                                <td class="px-2 py-1 border">Rp{{ number_format($matches[3], 0, ',', '.') }}</td>
+                                                <td class="px-2 py-1 border">Rp. {{ number_format($matches[3], 0, ',', '.') }}</td>
                                             </tr>
                                         @endif
                                     @endif

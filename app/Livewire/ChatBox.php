@@ -30,22 +30,22 @@ class ChatBox extends Component
         $userMessage = trim($this->message);
 
         $this->chats[] = ['sender' => 'user', 'message' => $userMessage];
-        Chat::create([
-            'user_id' => $userId,
-            'sender' => 'user',
-            'message' => $userMessage,
-        ]);
+        // Chat::create([
+        //     'user_id' => $userId,
+        //     'sender' => 'user',
+        //     'message' => $userMessage,
+        // ]);
 
         $this->message = '';
 
         $botReply = app(ChatService::class)->handleUserMessage($userId, $userMessage);
 
         $this->chats[] = ['sender' => 'bot', 'message' => $botReply];
-        Chat::create([
-            'user_id' => $userId,
-            'sender' => 'bot',
-            'message' => $botReply,
-        ]);
+        // Chat::create([
+        //     'user_id' => $userId,
+        //     'sender' => 'bot',
+        //     'message' => $botReply,
+        // ]);
 
         $this->isLoading = false;
     }
