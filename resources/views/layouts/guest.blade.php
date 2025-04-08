@@ -21,7 +21,7 @@
         <div>
             <a href="/" wire:navigate>
                 <x-application-logofront />
-                <i class="text-muted mt-2">Your smart AI assistant that understands your data"</i>
+                {{-- <i class="text-muted mt-2">Your smart AI assistant that understands your data"</i> --}}
             </a>
         </div>
 
