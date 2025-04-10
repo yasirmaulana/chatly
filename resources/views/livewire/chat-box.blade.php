@@ -1,12 +1,19 @@
-<div class="p-4 space-y-4">
+<div class="p-4 space-y-4"
+     x-data
+     x-init="$watch('Livewire.entangle(\'chats\')', () => {
+        $nextTick(() => {
+            let el = document.querySelector('.overflow-y-auto');
+            if (el) el.scrollTop = el.scrollHeight;
+        });
+     })">
+
     <div class="overflow-y-auto h-[400px] space-y-2">
         @foreach ($chats as $chat)
             <div class="flex {{ $chat['sender'] === 'user' ? 'justify-end' : 'justify-start' }}">
                 <div class="max-w-lg px-4 py-2 rounded-2xl shadow-md
                     {{ $chat['sender'] === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800' }}">
                     
-                    {{-- Jika pesan bot mengandung konteks transaksi --}}
-                    @if ($chat['sender'] === 'bot' && Str::contains($chat['message'], 'Berikut') && Str::contains($chat['message'], 'transaksi'))
+                    {{-- @if ($chat['sender'] === 'bot' && Str::contains($chat['message'], 'Berikut') && Str::contains($chat['message'], 'transaksi'))
                         <div class="mb-2 font-semibold">📊 Riwayat Transaksi:</div>
                         <table class="text-sm table-auto border border-gray-300">
                             <thead>
@@ -33,10 +40,9 @@
                                 @endforeach
                             </tbody>
                         </table>
-                    @else
-                        {{-- Tampilkan pesan biasa --}}
+                    @else --}}
                         {!! nl2br(e($chat['message'])) !!}
-                    @endif
+                    {{-- @endif --}}
                 </div>
             </div>
         @endforeach

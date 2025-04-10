@@ -17,6 +17,7 @@ Chatly is a smart AI chatbot built with [Laravel](https://laravel.com/), [Livewi
 - PostgreSQL
 - Groq LLM API
 - TailwindCSS
+- Redis
 
 ## 🖥️ UI Preview
 

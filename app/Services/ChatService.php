@@ -28,10 +28,10 @@ class ChatService
             // dd($filters);
             $transactions = $this->queryFilteredTransactions($userId, $filters);
             // dd($transactions);
-            $finalPrompt = $this->generatePromptFromFilteredData($message, $transactions);
+            $context = $this->generateContextFromTransactions($transactions);
             // dd($finalPrompt);
 
-            return $this->askGroq($finalPrompt);
+            return $this->askGroqWithContext($context, $message);
         } catch (\Exception $e) {
             Log::error('ChatService error: ' . $e->getMessage());
             return "Maaf, terjadi kesalahan saat memproses permintaan Anda. Silakan coba lagi nanti.";
@@ -73,7 +73,7 @@ class ChatService
         - Jika disebutkan angka tertentu atau nominal text, isi amount dengan angka tersebut, misalnya ditulis:
         - "400ribu" = 400000
         - "400.000" = 400000
-        - "lima ribu" = 5000
+        - "lima ribu" = 5000 | "lima ratus ribu" = 500000 | "lima juta" = 5000000
         - Jika disebutkan "lebih dari", "kurang dari", "sama dengan", atau "lebih besar dari", isi flag dengan operator yang sesuai.
         - Jika item tidak disebut, isi "item_name": null.
 
@@ -139,18 +139,22 @@ class ChatService
             ->get();
     }
 
-    public function generatePromptFromFilteredData(string $userMessage, Collection $transactions): string
+    public function generateContextFromTransactions(Collection $transactions): string
     {
-        $summary = "Berikut ini adalah data transaksi yang relevan:\n";
-
-        foreach ($transactions as $tx) {
-            $summary .= "- {$tx->transaction_date->format('Y-m-d')}: {$tx->item_name} seharga Rp " . number_format($tx->amount) . "\n";
+        if ($transactions->isEmpty()) {
+            return "Tidak ada transaksi yang ditemukan untuk filter ini.";
         }
 
-        return $summary . "\n\nPertanyaan user:\n" . $userMessage;
+        $context = "Berikut ini adalah data transaksi user:\n";
+
+        foreach ($transactions as $tx) {
+            $context .= "- {$tx->transaction_date->format('Y-m-d')}: {$tx->item_name} seharga Rp " . number_format($tx->amount) . "\n";
+        }
+
+        return $context;
     }
 
-    public function askGroq(string $prompt): string
+    public function askGroqWithContext(string $context, string $userMessage): string
     {
         // dd($prompt);
 
@@ -158,8 +162,18 @@ class ChatService
             ->post($this->groqApiUrl, [
                 'model' => $this->groqModel,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'Kamu adalah chatbot keuangan pribadi. Jawablah pertanyaan berdasarkan data atau tabel. Jika ada perhitungan, pastikan sesuai dengan nilai angka yang ditampilkan. Jawaban harus dalam bahasa Indonesia.'],
-                    ['role' => 'user', 'content' => $prompt],
+                    [
+                        'role' => 'system',
+                        'content' => 'Kamu adalah chatbot keuangan pribadi. Jawablah hanya berdasarkan data yang diberikan sebelumnya. Jangan menebak. Jika data tidak tersedia, jawab dengan jujur. Gaya bahasa: sopan, formal, dan profesional. Gunakan bahasa Indonesia yang baik dan benar.'
+                    ],
+                    [
+                        'role' => 'assistant',
+                        'content' => $context
+                    ],
+                    [
+                        'role' => 'user', 
+                        'content' => $userMessage
+                    ],
                 ],
                 'temperature' => 0.3,
                 'max_tokens' => 5000,
