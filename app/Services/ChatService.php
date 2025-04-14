@@ -3,7 +3,8 @@
 namespace App\Services;
 
 use Carbon\Carbon;
-use App\Models\Transaction;
+use App\Models\Sale;
+use App\Models\Stock;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
@@ -26,12 +27,16 @@ class ChatService
         try {
             $filters = $this->parseUserIntent($message);
             // dd($filters);
-            $transactions = $this->queryFilteredTransactions($userId, $filters);
-            // dd($transactions);
-            $context = $this->generateContextFromTransactions($transactions);
-            // dd($finalPrompt);
 
-            return $this->askGroqWithContext($context, $message);
+            if ($filters['query_type'] === 'stock') {
+                $stocks = $this->queryStock($filters['product_name'] ?? null);
+                $context = $this->generateContextFromStocks($stocks);
+                return $this->askGroq($context, $message);
+            }
+
+            $sales = $this->queryFilteredSales($userId, $filters);
+            $context = $this->generateContextFromSales($sales);
+            return $this->askGroq($context, $message);
         } catch (\Exception $e) {
             Log::error('ChatService error: ' . $e->getMessage());
             return "Maaf, terjadi kesalahan saat memproses permintaan Anda. Silakan coba lagi nanti.";
@@ -45,15 +50,16 @@ class ChatService
         $currentYear = Carbon::now()->year;
 
         $prompt = <<<PROMPT
-        Kamu adalah AI yang mengubah pesan pengguna menjadi filter transaksi. Jawaban HARUS berupa JSON VALID dan HANYA JSON, sesuai format ini:
+        Kamu adalah AI yang mengubah pesan pengguna menjadi filter sale dan stock. Jawaban HARUS berupa JSON VALID dan HANYA JSON, sesuai format ini:
 
         {
+            "query_type": "stock | sale",
             "date_filter": "hari_ini | kemarin | minggu_lalu | bulan_ini | bulan_kemarin | custom | riwayat",
-            "item_name": "string atau null",
+            "product_name": "string atau null",
             "start_date": "YYYY-MM-DD",
             "end_date": "YYYY-MM-DD",
             "amount": "integer atau null",
-            "flag": "> | < | = ",
+            "flag": "> | < | =",
         }
 
         Hari ini adalah: {$today}
@@ -61,21 +67,21 @@ class ChatService
         Tahun saat ini adalah: {$currentYear}
 
         Aturan:
-        - Gunakan HANYA nilai date_filter dari daftar.
+        - parameter $message dibuat lowercase.
+        - stok = stock | sale = penjualan.
+        - Gunakan HANYA nilai query_type dan date_filter dari daftar.
         - Tahun saat ini adalah {$currentYear}. Semua tanggal harus berada di tahun ini, kecuali jika pesan pengguna menyebutkan tahun lain.
         - Jika disebut rentang tanggal atau tanggal tertentu, isi start_date & end_date, dan set date_filter = "custom" atau "riwayat".
         - Jika tidak disebutkan rentang tanggal atau tanggal tertentu dalam pesan, tentukan start_date dan end_date berdasarkan nilai date_filter:
         - "hari_ini": isi start_date dan end_date dengan tanggal hari ini ({$today}).
         - "kemarin": isi start_date dan end_date dengan tanggal kemarin (1 hari sebelum {$today}).
-        - "minggu_lalu": isi start_date dan end_date dengan hari Senin hingga Minggu pada minggu lalu (berdasarkan tanggal hari ini).
-        - "bulan_ini": isi start_date dengan tanggal 1 bulan ini, dan end_date dengan tanggal hari ini (semua di tahun ini).
-        - "bulan_kemarin": isi start_date dengan tanggal 1 bulan lalu, dan end_date dengan tanggal terakhir bulan lalu (di tahun ini).
-        - Jika disebutkan angka tertentu atau nominal text, isi amount dengan angka tersebut, misalnya ditulis:
-        - "400ribu" = 400000
-        - "400.000" = 400000
-        - "lima ribu" = 5000 | "lima ratus ribu" = 500000 | "lima juta" = 5000000
-        - Jika disebutkan "lebih dari", "kurang dari", "sama dengan", atau "lebih besar dari", isi flag dengan operator yang sesuai.
-        - Jika item tidak disebut, isi "item_name": null.
+        - "minggu_lalu": isi dengan Senin hingga Minggu minggu lalu.
+        - "bulan_ini": dari tanggal 1 sampai hari ini.
+        - "bulan_kemarin": dari tanggal 1 sampai akhir bulan lalu.
+        - "query_type": "sale" jika tidak ada kata "stock" dalam pesan.
+        - "untuk stock, tentukan product_name, dan set query_type = "stock",
+        - Jika disebutkan angka tertentu, isi amount dengan angka itu, dan set flag jika perlu.
+        - Jika produk tidak disebut, isi "product_name": null.
 
         Jangan berikan penjelasan apapun. Output HANYA JSON valid.
         PROMPT;
@@ -92,19 +98,29 @@ class ChatService
             ]);
 
         $content = $response['choices'][0]['message']['content'] ?? '{}';
-        return json_decode($content, true) ?? ['date_filter' => 'all_time', 'item_name' => null];
+        return json_decode($content, true) ?? ['query_type' => 'sale', 'product_name' => null];
     }
 
-    public function queryFilteredTransactions(int $userId, array $filters): Collection
+    public function queryStock(?string $productName = null): Collection
     {
-        $query = Transaction::where('user_id', $userId);
+        if ($productName) {
+            return Stock::where('product_name', $productName)->get();
+        }
+
+        return Stock::orderBy('product_name')->get();
+    }
+
+    public function queryFilteredSales(int $userId, array $filters): Collection
+    {
+        $query = Sale::where('user_id', $userId);
+
         switch ($filters['date_filter']) {
             case 'hari_ini':
-                $query->whereDate('transaction_date', today());
+                $query->whereDate('sale_date', today());
                 break;
 
             case 'kemarin':
-                $query->whereDate('transaction_date', now()->subDay());
+                $query->whereDate('sale_date', now()->subDay());
                 break;
 
             case 'minggu_lalu':
@@ -112,68 +128,67 @@ class ChatService
             case 'bulan_kemarin':
             case 'custom':
             case 'riwayat':
-                $query->whereBetween('transaction_date', [
+                $query->whereBetween('sale_date', [
                     Carbon::parse($filters['start_date'])->startOfDay(),
-                    Carbon::parse($filters['end_date'])->endOfDay()
+                    Carbon::parse($filters['end_date'])->endOfDay(),
                 ]);
                 break;
         }
 
-
-        if (!empty($filters['item_name'])) {
-            $query->where('item_name', $filters['item_name']);
+        if (!empty($filters['product_name'])) {
+            $query->where('product_name', $filters['product_name']);
         }
 
-        if (!empty($filters['amount']) && !empty($filters['flag'])) {
-            $query->where('amount', $filters['flag'], $filters['amount']);
+        if (!empty($filters['total']) && !empty($filters['flag'])) {
+            $query->where('total', $filters['flag'], $filters['total']);
         }
-
-        // \Log::debug('Querying transactions', [
-        //     'sql' => $query->toSql(),
-        //     'bindings' => $query->getBindings(),
-        // ]);
 
         return $query
-            ->orderBy('item_name', 'asc')
-            ->orderBy('transaction_date', 'desc')
+            ->orderBy('product_name', 'asc')
+            ->orderBy('sale_date', 'desc')
             ->get();
     }
 
-    public function generateContextFromTransactions(Collection $transactions): string
+    public function generateContextFromSales(Collection $sales): string
     {
-        if ($transactions->isEmpty()) {
-            return "Tidak ada transaksi yang ditemukan untuk filter ini.";
+        if ($sales->isEmpty()) {
+            return "Tidak ada data penjualan yang ditemukan untuk filter ini.";
         }
 
-        $context = "Berikut ini adalah data transaksi user:\n";
+        $summary = "Berikut ini adalah data penjualan yang relevan:\n";
 
-        foreach ($transactions as $tx) {
-            $context .= "- {$tx->transaction_date->format('Y-m-d')}: {$tx->item_name} seharga Rp " . number_format($tx->amount) . "\n";
+        foreach ($sales as $sale) {
+            $summary .= "- {$sale->sale_date->format('Y-m-d')}: {$sale->quantity} unit {$sale->product_name} (harga satuan Rp " . number_format($sale->price) . ", total Rp " . number_format($sale->total) . ")\n";
         }
 
-        return $context;
+        return $summary;
     }
 
-    public function askGroqWithContext(string $context, string $userMessage): string
+    public function generateContextFromStocks(Collection $stocks): string
     {
-        // dd($prompt);
+        if ($stocks->isEmpty()) {
+            return "Tidak ada data stok produk yang ditemukan.";
+        }
 
+        $summary = "Berikut adalah daftar stok produk yang tersedia:\n";
+
+        foreach ($stocks as $stock) {
+            $summary .= "- {$stock->product_name}: {$stock->quantity} item, harga satuan Rp " . number_format($stock->price) . "\n";
+        }
+
+        return $summary;
+    }
+
+
+    public function askGroq(string $context, string $userMessage): string
+    {
         $response = Http::withToken($this->groqApiKey)
             ->post($this->groqApiUrl, [
                 'model' => $this->groqModel,
                 'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'Kamu adalah chatbot keuangan pribadi. Jawablah hanya berdasarkan data yang diberikan sebelumnya. Jangan menebak. Jika data tidak tersedia, jawab dengan jujur. Gaya bahasa: sopan, formal, dan profesional. Gunakan bahasa Indonesia yang baik dan benar.'
-                    ],
-                    [
-                        'role' => 'assistant',
-                        'content' => $context
-                    ],
-                    [
-                        'role' => 'user', 
-                        'content' => $userMessage
-                    ],
+                    ['role' => 'system', 'content' => 'Kamu adalah chatbot POS. Jawab hanya berdasarkan data yang diberikan. Jangan mengarang. Jawab dengan gaya sopan dan jelas. Gunakan field "quantity" untuk menghitung jumlah unit yang terjual. Jangan mengira 1 baris = 1 unit.'],
+                    ['role' => 'system', 'content' => $context],
+                    ['role' => 'user', 'content' => $userMessage],
                 ],
                 'temperature' => 0.3,
                 'max_tokens' => 5000,
